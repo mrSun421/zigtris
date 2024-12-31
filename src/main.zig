@@ -16,10 +16,10 @@ const PieceShapes = enum {
                 return rl.Color.fromInt(0x01E6FEFF);
             },
             .l => {
-                return rl.Color.fromInt(0x1801FFFF);
+                return rl.Color.fromInt(0xFF7308FF);
             },
             .j => {
-                return rl.Color.fromInt(0xFF7308FF);
+                return rl.Color.fromInt(0x1801FFFF);
             },
             .o => {
                 return rl.Color.fromInt(0xFFDE00FF);
@@ -48,9 +48,70 @@ const playfieldWidth = 10;
 const squareSideLength = screenHeight / (visiblePlayfieldHeight + 3);
 const BitSetPlayfield = std.bit_set.IntegerBitSet(playfieldWidth * playfieldHeight);
 var piecePlayfield: [pieceCount]BitSetPlayfield = undefined;
-var pieceBag = std.bit_set.IntegerBitSet(pieceCount).initFull();
+var prng = std.Random.DefaultPrng.init(0);
 
 const CurrentShapeData = struct { shape: PieceShapes, playfield: *BitSetPlayfield, rotation: RotationStates };
+const PieceQueue = struct {
+    slice: [pieceCount]PieceShapes,
+    start: usize,
+    len: usize,
+    bag: std.bit_set.IntegerBitSet(pieceCount),
+    pub fn init() PieceQueue {
+        var q = PieceQueue{
+            .slice = [_]PieceShapes{@enumFromInt(0)} ** pieceCount,
+            .start = 0,
+            .len = 0,
+            .bag = std.bit_set.IntegerBitSet(pieceCount).initFull(),
+        };
+
+        while (q.bag.mask != 0) {
+            const bagIdx = prng.random().intRangeLessThan(usize, 0, pieceCount);
+            if (q.bag.isSet(bagIdx)) {
+                q.enqueue(@enumFromInt(bagIdx));
+                q.bag.unset(bagIdx);
+            }
+        }
+
+        return q;
+    }
+
+    pub fn enqueue(self: *PieceQueue, shape: PieceShapes) void {
+        if (self.len >= pieceCount) {
+            return;
+        }
+        const end = (self.start + self.len) % pieceCount;
+
+        self.slice[end] = shape;
+        self.len += 1;
+    }
+    pub fn dequeue(self: *PieceQueue) PieceShapes {
+        // Should return an error if empty, but this queue will always be full
+        const front = self.slice[self.start];
+        self.start = (self.start + 1) % pieceCount;
+        self.len -= 1;
+
+        return front;
+    }
+
+    pub fn addPiece(self: *PieceQueue) void {
+        if (self.bag.mask == 0) {
+            self.bag.setUnion(std.bit_set.IntegerBitSet(pieceCount).initFull());
+        }
+        var pieceFound = false;
+        while (!pieceFound) {
+            const bagIdx = prng.random().intRangeLessThan(usize, 0, pieceCount);
+            if (self.bag.isSet(bagIdx)) {
+                pieceFound = true;
+                self.enqueue(@enumFromInt(bagIdx));
+                self.bag.unset(bagIdx);
+            }
+        }
+    }
+
+    pub fn getFront(self: *PieceQueue) PieceShapes {
+        return self.slice[self.start];
+    }
+};
 
 pub fn main() !void {
     for (0..pieceCount) |i| {
@@ -62,41 +123,32 @@ pub fn main() !void {
 
     rl.setTargetFPS(120);
 
-    // var prng = std.Random.DefaultPrng.init(0);
-    const Queue = std.DoublyLinkedList(PieceShapes);
-    var pieceQueue = Queue{};
+    var pieceQueue = PieceQueue.init();
 
-    // while (pieceBag.mask != 0) {
-    //     const bagIdx = prng.random().intRangeLessThan(usize, 0, pieceCount);
-    //     if (pieceBag.isSet(bagIdx)) {
-    //         var newNode = Queue.Node{ .data = @enumFromInt(bagIdx) };
-    //         pieceQueue.prepend(&newNode);
-    //         pieceBag.unset(bagIdx);
-    //     }
-    // }
-
-    var newNode = Queue.Node{ .data = PieceShapes.o };
-    pieceQueue.prepend(&newNode);
-
-    pieceBag.setUnion(std.bit_set.IntegerBitSet(pieceCount).initFull());
     var currentShapePlayfield = BitSetPlayfield.initEmpty();
-    var currentShapeData = CurrentShapeData{ .shape = pieceQueue.pop().?.data, .playfield = &currentShapePlayfield, .rotation = RotationStates.Zero };
+    var currentShapeData = CurrentShapeData{ .shape = undefined, .playfield = &currentShapePlayfield, .rotation = RotationStates.Zero };
 
     while (!rl.windowShouldClose()) {
         // Update
         {
+            if (pieceQueue.len < pieceCount) {
+                pieceQueue.addPiece();
+            }
             if (currentShapePlayfield.mask == 0) {
-                spawnPiece(&currentShapeData);
+                spawnPiece(pieceQueue.dequeue(), &currentShapeData);
             }
 
             if (rl.isKeyPressed(rl.KeyboardKey.key_down)) {
-                moveShape(&currentShapeData, Direction.South);
+                const moveIsValid = moveShape(&currentShapeData, Direction.South);
+                if (!moveIsValid) {
+                    lockCurrentShape(&currentShapeData);
+                }
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_up)) {
-                moveShape(&currentShapeData, Direction.North);
+                _ = moveShape(&currentShapeData, Direction.North);
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_left)) {
-                moveShape(&currentShapeData, Direction.West);
+                _ = moveShape(&currentShapeData, Direction.West);
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_right)) {
-                moveShape(&currentShapeData, Direction.East);
+                _ = moveShape(&currentShapeData, Direction.East);
             }
             if (rl.isKeyPressed(rl.KeyboardKey.key_z)) {
                 // rotateShapeRight(currentShape, &currentShapePlayfield, currentRotation);
@@ -114,6 +166,7 @@ pub fn main() !void {
                 drawPlayfield(@enumFromInt(i), &piecePlayfield[i]);
             }
             drawPlayfield(currentShapeData.shape, currentShapeData.playfield);
+            drawNextPiece(pieceQueue.getFront());
         }
     }
 }
@@ -150,88 +203,219 @@ fn drawPlayfield(shape: PieceShapes, playfield: *const BitSetPlayfield) void {
         }
     }
 }
-fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) void {
-    switch (currentShapeData.shape) {
-        PieceShapes.i => {},
-        PieceShapes.l => {},
-        PieceShapes.j => {},
-        PieceShapes.o => {
-            var tempidx: usize = 0;
-            var posCount: usize = 0;
+fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) bool {
+    var offsetX: i32 = 0;
+    var offsetY: i32 = 0;
+    switch (direction) {
+        Direction.North => {
+            offsetY = -1;
+        },
+        Direction.East => {
+            offsetX = 1;
+        },
+        Direction.South => {
+            offsetY = 1;
+        },
+        Direction.West => {
+            offsetX = -1;
+        },
+    }
+    var tempidx: usize = 0;
+    var posCount: usize = 0;
 
-            var filledXPos: [4]i32 = undefined;
-            var filledYPos: [4]i32 = undefined;
+    var filledXPos: [4]i32 = undefined;
+    var filledYPos: [4]i32 = undefined;
 
-            while (posCount < 4) : (tempidx += 1) {
-                if (currentShapeData.playfield.isSet(tempidx)) {
-                    filledXPos[posCount] = @intCast(@rem(tempidx, playfieldWidth));
-                    filledYPos[posCount] = @intCast(@divFloor(tempidx, playfieldWidth));
-                    posCount += 1;
-                }
-            }
-            var offsetX: i32 = 0;
-            var offsetY: i32 = 0;
-            switch (direction) {
-                Direction.North => {
-                    offsetY = -1;
-                },
-                Direction.East => {
-                    offsetX = 1;
-                },
-                Direction.South => {
-                    offsetY = 1;
-                },
-                Direction.West => {
-                    offsetX = -1;
-                },
-            }
-            var futureXpos: [4]i32 = undefined;
-            var futureYpos: [4]i32 = undefined;
-            for (filledXPos, filledYPos, 0..) |xPos, yPos, i| {
-                futureXpos[i] = xPos + offsetX;
-                futureYpos[i] = yPos + offsetY;
-            }
+    while (posCount < 4) : (tempidx += 1) {
+        if (currentShapeData.playfield.isSet(tempidx)) {
+            filledXPos[posCount] = @intCast(@rem(tempidx, playfieldWidth));
+            filledYPos[posCount] = @intCast(@divFloor(tempidx, playfieldWidth));
+            posCount += 1;
+        }
+    }
+    var futureXpos: [4]i32 = undefined;
+    var futureYpos: [4]i32 = undefined;
+    for (filledXPos, filledYPos, 0..) |xPos, yPos, i| {
+        futureXpos[i] = xPos + offsetX;
+        futureYpos[i] = yPos + offsetY;
+    }
 
-            var moveIsValid = true;
+    var moveIsValid = true;
+    for (futureXpos, futureYpos) |futXPos, futYPos| {
+        if (futXPos < 0 or futXPos >= playfieldWidth or futYPos < 0 or futYPos >= playfieldHeight) {
+            moveIsValid = false;
+            return moveIsValid;
+        }
+    }
 
+    var futurePlayfield = BitSetPlayfield.initEmpty();
+    for (futureXpos, futureYpos) |futXPos, futYPos| {
+        const futXCast: usize = @intCast(futXPos);
+        const futYCast: usize = @intCast(futYPos);
+        const bitIdx: usize = futYCast * playfieldWidth + futXCast;
+        futurePlayfield.set(bitIdx);
+    }
+
+    var allFilledPlayfield = BitSetPlayfield.initEmpty();
+    for (piecePlayfield) |playfield| {
+        allFilledPlayfield.setUnion(playfield);
+    }
+
+    const checkPlayfield = allFilledPlayfield.intersectWith(futurePlayfield);
+
+    if (checkPlayfield.mask != 0) {
+        moveIsValid = false;
+        return moveIsValid;
+    }
+    if (moveIsValid) {
+        currentShapeData.playfield.mask = futurePlayfield.mask;
+    }
+    return moveIsValid;
+}
+fn spawnPiece(shape: PieceShapes, currenShapeData: *CurrentShapeData) void {
+    currenShapeData.rotation = RotationStates.Zero;
+    currenShapeData.shape = shape;
+    switch (shape) {
+        PieceShapes.i => {
+            const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 + 1 };
+            const futureYpos = [4]i32{ 1, 1, 1, 1 };
             for (futureXpos, futureYpos) |futXPos, futYPos| {
-                if (futXPos < 0 or futXPos >= playfieldWidth or futYPos < 0 or futYPos >= playfieldHeight) {
-                    moveIsValid = false;
-                    break;
-                }
-            }
-            if (moveIsValid) {
-                currentShapeData.playfield.setIntersection(BitSetPlayfield.initEmpty());
-                for (futureXpos, futureYpos) |futXPos, futYPos| {
-                    const futXCast: usize = @intCast(futXPos);
-                    const futYCast: usize = @intCast(futYPos);
-                    const bitIdx: usize = futYCast * playfieldWidth + futXCast;
-                    currentShapeData.playfield.set(bitIdx);
-                }
+                setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
         },
-        PieceShapes.s => {},
-        PieceShapes.z => {},
-        PieceShapes.t => {},
-    }
-}
-fn spawnPiece(currenShapeData: *CurrentShapeData) void {
-    switch (currenShapeData.shape) {
-        PieceShapes.i => {},
-        PieceShapes.l => {},
-        PieceShapes.j => {},
+        PieceShapes.l => {
+            const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 };
+            const futureYpos = [4]i32{ 2, 2, 2, 1 };
+            for (futureXpos, futureYpos) |futXPos, futYPos| {
+                setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
+            }
+        },
+        PieceShapes.j => {
+            const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2 };
+            const futureYpos = [4]i32{ 1, 2, 2, 2 };
+            for (futureXpos, futureYpos) |futXPos, futYPos| {
+                setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
+            }
+        },
         PieceShapes.o => {
+            currenShapeData.shape = PieceShapes.o;
             const futureXpos = [4]i32{ playfieldWidth / 2 - 1, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 };
             const futureYpos = [4]i32{ 1, 2, 1, 2 };
             for (futureXpos, futureYpos) |futXPos, futYPos| {
-                const futXCast: usize = @intCast(futXPos);
-                const futYCast: usize = @intCast(futYPos);
-                const bitIdx: usize = futYCast * playfieldWidth + futXCast;
-                currenShapeData.playfield.set(bitIdx);
+                setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
         },
-        PieceShapes.s => {},
-        PieceShapes.z => {},
-        PieceShapes.t => {},
+        PieceShapes.s => {
+            const futureXpos = [4]i32{ playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2, playfieldWidth / 2 + 1 };
+            const futureYpos = [4]i32{ 2, 2, 1, 1 };
+            for (futureXpos, futureYpos) |futXPos, futYPos| {
+                setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
+            }
+        },
+        PieceShapes.z => {
+            const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2 - 1, playfieldWidth / 2 };
+            const futureYpos = [4]i32{ 1, 1, 2, 2 };
+            for (futureXpos, futureYpos) |futXPos, futYPos| {
+                setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
+            }
+        },
+        PieceShapes.t => {
+            const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 - 1 };
+            const futureYpos = [4]i32{ 2, 2, 2, 1 };
+            for (futureXpos, futureYpos) |futXPos, futYPos| {
+                setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
+            }
+        },
+    }
+}
+
+fn setPlayfieldFromPosition(playfield: *BitSetPlayfield, xpos: i32, ypos: i32) void {
+    const xCast: usize = @intCast(xpos);
+    const yCast: usize = @intCast(ypos);
+    const bitIdx: usize = yCast * playfieldWidth + xCast;
+    playfield.set(bitIdx);
+}
+fn lockCurrentShape(currentShapeData: *CurrentShapeData) void {
+    piecePlayfield[@intFromEnum(currentShapeData.shape)].setUnion(currentShapeData.playfield.*);
+    currentShapeData.playfield.setIntersection(BitSetPlayfield.initEmpty());
+}
+fn drawNextPiece(shape: PieceShapes) void {
+    const background = rl.Rectangle.init(screenWidth * 3 / 4, squareSideLength * 2, squareSideLength * 5, squareSideLength * 5);
+
+    var pieceRects: [4]rl.Rectangle = [_]rl.Rectangle{rl.Rectangle.init(background.x, background.y, squareSideLength, squareSideLength)} ** 4;
+
+    rl.drawRectangleRec(background, rl.Color.black);
+    switch (shape) {
+        PieceShapes.i => {
+            const pieceLength = squareSideLength * 4;
+            const pieceHeight = squareSideLength;
+            const offsetsX = [4]i32{ 0, 1, 2, 3 };
+            const offsetsY = [4]i32{ 0, 0, 0, 0 };
+            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+        },
+        PieceShapes.j => {
+            const pieceLength = squareSideLength * 3;
+            const pieceHeight = squareSideLength * 2;
+            const offsetsX = [4]i32{ 0, 0, 1, 2 };
+            const offsetsY = [4]i32{ 0, 1, 1, 1 };
+            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+        },
+        PieceShapes.l => {
+            const pieceLength = squareSideLength * 3;
+            const pieceHeight = squareSideLength * 2;
+            const offsetsX = [4]i32{ 0, 1, 2, 2 };
+            const offsetsY = [4]i32{ 1, 1, 1, 0 };
+            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+        },
+        PieceShapes.o => {
+            const pieceLength = squareSideLength * 2;
+            const pieceHeight = squareSideLength * 2;
+            const offsetsX = [4]i32{ 0, 1, 0, 1 };
+            const offsetsY = [4]i32{ 0, 0, 1, 1 };
+            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+        },
+        PieceShapes.s => {
+            const pieceLength = squareSideLength * 3;
+            const pieceHeight = squareSideLength * 2;
+            const offsetsX = [4]i32{ 0, 1, 1, 2 };
+            const offsetsY = [4]i32{ 1, 1, 0, 0 };
+            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+        },
+        PieceShapes.z => {
+            const pieceLength = squareSideLength * 3;
+            const pieceHeight = squareSideLength * 2;
+            const offsetsX = [4]i32{ 0, 1, 1, 2 };
+            const offsetsY = [4]i32{ 0, 0, 1, 1 };
+            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+        },
+        PieceShapes.t => {
+            const pieceLength = squareSideLength * 3;
+            const pieceHeight = squareSideLength * 2;
+            const offsetsX = [4]i32{ 0, 1, 1, 2 };
+            const offsetsY = [4]i32{ 1, 1, 0, 1 };
+            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+        },
+    }
+    for (pieceRects) |pieceRect| {
+        rl.drawRectangleRec(pieceRect, shape.toColor());
+    }
+}
+fn offsetPieceRects(
+    pieceRects: *[4]rl.Rectangle,
+    background: rl.Rectangle,
+    pieceLength: f32,
+    pieceHeight: f32,
+    offsetsX: [4]i32,
+    offsetsY: [4]i32,
+) void {
+    for (0..4) |i| {
+        // centering
+        pieceRects[i].y += background.height / 2 - pieceHeight / 2;
+        pieceRects[i].x += background.width / 2 - pieceLength / 2;
+    }
+    // make shape
+    for (0..4) |i| {
+        pieceRects[i].y += @floatFromInt(squareSideLength * offsetsY[i]);
+        pieceRects[i].x += @floatFromInt(squareSideLength * offsetsX[i]);
     }
 }
