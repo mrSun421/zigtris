@@ -37,7 +37,8 @@ const PieceShapes = enum {
     }
 };
 const Direction = enum { North, East, South, West };
-const RotationStates = enum { Zero, Right, Left, Two };
+const RotationState = enum { Zero, Right, Left, Two };
+const RotationAction = enum { Right, Left };
 const Timer = struct {
     startTime: f64,
     lifeTime: f64,
@@ -71,7 +72,7 @@ const BitSetPlayfield = std.bit_set.IntegerBitSet(playfieldWidth * playfieldHeig
 var piecePlayfield: [pieceCount]BitSetPlayfield = undefined;
 var prng = std.Random.DefaultPrng.init(0);
 
-const CurrentShapeData = struct { shape: PieceShapes, playfield: *BitSetPlayfield, rotation: RotationStates };
+const CurrentShapeData = struct { shape: PieceShapes, playfield: *BitSetPlayfield, rotation: RotationState };
 const PieceQueue = struct {
     slice: [pieceCount]PieceShapes,
     start: usize,
@@ -147,7 +148,7 @@ pub fn main() !void {
     var pieceQueue = PieceQueue.init();
 
     var currentShapePlayfield = BitSetPlayfield.initEmpty();
-    var currentShapeData = CurrentShapeData{ .shape = undefined, .playfield = &currentShapePlayfield, .rotation = RotationStates.Zero };
+    var currentShapeData = CurrentShapeData{ .shape = undefined, .playfield = &currentShapePlayfield, .rotation = RotationState.Zero };
 
     var lockTimer: Timer = undefined;
     lockTimer.disable();
@@ -306,7 +307,7 @@ fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) bool {
     return moveIsValid;
 }
 fn spawnPiece(shape: PieceShapes, currenShapeData: *CurrentShapeData) void {
-    currenShapeData.rotation = RotationStates.Zero;
+    currenShapeData.rotation = RotationState.Zero;
     currenShapeData.shape = shape;
     switch (shape) {
         PieceShapes.i => {
