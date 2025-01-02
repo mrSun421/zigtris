@@ -38,6 +38,27 @@ const PieceShapes = enum {
 };
 const Direction = enum { North, East, South, West };
 const RotationStates = enum { Zero, Right, Left, Two };
+const Timer = struct {
+    startTime: f64,
+    lifeTime: f64,
+
+    pub fn init() Timer {
+        return Timer{ .startTime = rl.getTime(), .lifeTime = std.math.floatMax(f64) };
+    }
+    pub fn start(self: *Timer, lifeTime: f64) void {
+        self.startTime = rl.getTime();
+        self.lifeTime = lifeTime;
+    }
+    pub fn isDone(self: *Timer) bool {
+        return rl.getTime() - self.startTime >= self.lifeTime;
+    }
+    pub fn getElapsed(self: *Timer) f64 {
+        return rl.getTime() - self.startTime;
+    }
+    pub fn disable(self: *Timer) void {
+        self.lifeTime = std.math.floatMax(f64);
+    }
+};
 
 const pieceCount = 7;
 const screenWidth = 1600;
@@ -128,6 +149,9 @@ pub fn main() !void {
     var currentShapePlayfield = BitSetPlayfield.initEmpty();
     var currentShapeData = CurrentShapeData{ .shape = undefined, .playfield = &currentShapePlayfield, .rotation = RotationStates.Zero };
 
+    var lockTimer: Timer = undefined;
+    lockTimer.disable();
+
     while (!rl.windowShouldClose()) {
         // Update
         {
@@ -138,10 +162,15 @@ pub fn main() !void {
                 spawnPiece(pieceQueue.dequeue(), &currentShapeData);
             }
 
+            if (lockTimer.isDone()) {
+                lockCurrentShape(&currentShapeData);
+                lockTimer.disable();
+            }
+
             if (rl.isKeyPressed(rl.KeyboardKey.key_down)) {
                 const moveIsValid = moveShape(&currentShapeData, Direction.South);
                 if (!moveIsValid) {
-                    lockCurrentShape(&currentShapeData);
+                    lockTimer.start(0.5);
                 }
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_up)) {
                 _ = moveShape(&currentShapeData, Direction.North);
@@ -149,6 +178,10 @@ pub fn main() !void {
                 _ = moveShape(&currentShapeData, Direction.West);
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_right)) {
                 _ = moveShape(&currentShapeData, Direction.East);
+            }
+            if (rl.isKeyPressed(rl.KeyboardKey.key_space)) {
+                while (moveShape(&currentShapeData, Direction.South)) {}
+                lockCurrentShape(&currentShapeData);
             }
             if (rl.isKeyPressed(rl.KeyboardKey.key_z)) {
                 // rotateShapeRight(currentShape, &currentShapePlayfield, currentRotation);
