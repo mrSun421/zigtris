@@ -238,6 +238,24 @@ fn drawPlayfield(shape: PieceShapes, playfield: *const BitSetPlayfield) void {
     }
 }
 fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) bool {
+    var allFilledPlayfield = BitSetPlayfield.initEmpty();
+    for (piecePlayfield) |playfield| {
+        allFilledPlayfield.setUnion(playfield);
+    }
+    if (getFuturePlayfield(currentShapeData, direction)) |futurePlayfield| {
+        const checkPlayfield = allFilledPlayfield.intersectWith(futurePlayfield);
+        if (checkPlayfield.mask != 0) {
+            return false;
+        } else {
+            currentShapeData.playfield.mask = futurePlayfield.mask;
+            return true;
+        }
+    } else {
+        return false;
+    }
+}
+
+fn getFuturePlayfield(currentShapeData: *CurrentShapeData, direction: Direction) ?BitSetPlayfield {
     var offsetX: i32 = 0;
     var offsetY: i32 = 0;
     switch (direction) {
@@ -267,6 +285,7 @@ fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) bool {
             posCount += 1;
         }
     }
+
     var futureXpos: [4]i32 = undefined;
     var futureYpos: [4]i32 = undefined;
     for (filledXPos, filledYPos, 0..) |xPos, yPos, i| {
@@ -274,11 +293,9 @@ fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) bool {
         futureYpos[i] = yPos + offsetY;
     }
 
-    var moveIsValid = true;
     for (futureXpos, futureYpos) |futXPos, futYPos| {
         if (futXPos < 0 or futXPos >= playfieldWidth or futYPos < 0 or futYPos >= playfieldHeight) {
-            moveIsValid = false;
-            return moveIsValid;
+            return null;
         }
     }
 
@@ -289,23 +306,9 @@ fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) bool {
         const bitIdx: usize = futYCast * playfieldWidth + futXCast;
         futurePlayfield.set(bitIdx);
     }
-
-    var allFilledPlayfield = BitSetPlayfield.initEmpty();
-    for (piecePlayfield) |playfield| {
-        allFilledPlayfield.setUnion(playfield);
-    }
-
-    const checkPlayfield = allFilledPlayfield.intersectWith(futurePlayfield);
-
-    if (checkPlayfield.mask != 0) {
-        moveIsValid = false;
-        return moveIsValid;
-    }
-    if (moveIsValid) {
-        currentShapeData.playfield.mask = futurePlayfield.mask;
-    }
-    return moveIsValid;
+    return futurePlayfield;
 }
+
 fn spawnPiece(shape: PieceShapes, currenShapeData: *CurrentShapeData) void {
     currenShapeData.rotation = RotationState.Zero;
     currenShapeData.shape = shape;
