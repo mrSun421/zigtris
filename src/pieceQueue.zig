@@ -64,4 +64,22 @@ pub const PieceQueue = struct {
     pub fn getFront(self: *PieceQueue) PieceShape {
         return self.slice[self.start];
     }
+
+    pub fn clear(self: *PieceQueue) void {
+        while (self.len > 0) {
+            _ = self.dequeue();
+        }
+    }
+
+    // Remember to dealloc! Otherwise, this is a memory leak!
+    pub fn peekAll(self: *PieceQueue, allocator: std.mem.Allocator) ![]PieceShape {
+        var arr = try allocator.alloc(PieceShape, self.len);
+        var tempStack = try std.ArrayList(PieceShape).initCapacity(allocator, self.len);
+        defer tempStack.deinit();
+        for (0..self.len) |i| {
+            const idx = (self.start + i) % pieceCount;
+            arr[i] = self.slice[idx];
+        }
+        return arr;
+    }
 };

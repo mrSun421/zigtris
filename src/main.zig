@@ -30,6 +30,10 @@ pub fn main() !void {
 
     rl.setTargetFPS(120);
 
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+
     var pieceQueue = PieceQueue.init();
 
     var currentShapePlayfield = BitSetPlayfield.initEmpty();
@@ -85,7 +89,10 @@ pub fn main() !void {
                 drawPlayfield(@enumFromInt(i), &piecePlayfield[i]);
             }
             drawPlayfield(currentShapeData.shape, currentShapeData.playfield);
-            drawNextPiece(pieceQueue.getFront());
+
+            const nextPieces = try pieceQueue.peekAll(arena.allocator());
+            arena.allocator().destroy(&nextPieces);
+            drawNextPieces(nextPieces);
         }
     }
 }
@@ -261,12 +268,19 @@ fn lockCurrentShape(currentShapeData: *CurrentShapeData) void {
     piecePlayfield[@intFromEnum(currentShapeData.shape)].setUnion(currentShapeData.playfield.*);
     currentShapeData.playfield.setIntersection(BitSetPlayfield.initEmpty());
 }
-fn drawNextPiece(shape: PieceShape) void {
-    const background = rl.Rectangle.init(screenWidth * 3 / 4, squareSideLength * 2, squareSideLength * 5, squareSideLength * 5);
 
-    var pieceRects: [4]rl.Rectangle = [_]rl.Rectangle{rl.Rectangle.init(background.x, background.y, squareSideLength, squareSideLength)} ** 4;
+fn drawNextPieces(nextPieces: []PieceShape) void {
+    for (0..5) |i| {
+        const piece = nextPieces[i];
+        const idx: f32 = @floatFromInt(i);
+        const background = rl.Rectangle.init(screenWidth * 3 / 4, squareSideLength * (2 + 3 * idx), squareSideLength * 5, squareSideLength * 3);
+        drawNextPiece(piece, background);
+    }
+}
 
+fn drawNextPiece(shape: PieceShape, background: rl.Rectangle) void {
     rl.drawRectangleRec(background, rl.Color.black);
+    var pieceRects: [4]rl.Rectangle = [_]rl.Rectangle{rl.Rectangle.init(background.x, background.y, squareSideLength, squareSideLength)} ** 4;
     switch (shape) {
         PieceShape.i => {
             const pieceLength = squareSideLength * 4;
