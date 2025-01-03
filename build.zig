@@ -6,7 +6,7 @@ pub fn build(b: *B) void {
     const optimize = b.standardOptimizeOption(.{});
     {
         const exe = b.addExecutable(.{
-            .name = "zig-raylib",
+            .name = "zigtris",
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
@@ -70,4 +70,3 @@ fn addDependencies(
     const raylib_artifact = raylib_dep.artifact("raylib");
     compile_step.linkLibrary(raylib_artifact);
 }
-
