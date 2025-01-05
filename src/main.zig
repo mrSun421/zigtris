@@ -456,10 +456,6 @@ fn rotateShape(currentShapeData: *CurrentShapeData, rotationAction: RotationActi
             posCount += 1;
         }
     }
-    for (filledXPos, filledYPos) |xPos, yPos| {
-        std.debug.print("({d}, {d}), ", .{ xPos, yPos });
-    }
-    std.debug.print("\n", .{});
 
     var futureXPos: [4]i32 = undefined;
     var futureYPos: [4]i32 = undefined;
