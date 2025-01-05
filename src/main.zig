@@ -86,6 +86,8 @@ pub fn main() !void {
 
     var lockTimer: Timer = undefined;
     lockTimer.disable();
+    var heldPiece: ?PieceShape = null;
+    var holdPressed: bool = false;
 
     while (!rl.windowShouldClose()) {
         // Update
@@ -99,6 +101,7 @@ pub fn main() !void {
 
             if (lockTimer.isDone()) {
                 lockCurrentShape(&currentShapeData);
+                holdPressed = false;
                 lockTimer.disable();
             }
 
@@ -117,11 +120,23 @@ pub fn main() !void {
             if (rl.isKeyPressed(rl.KeyboardKey.key_space)) {
                 while (moveShape(&currentShapeData, Direction.South)) {}
                 lockCurrentShape(&currentShapeData);
+                holdPressed = false;
             }
             if (rl.isKeyPressed(rl.KeyboardKey.key_z)) {
                 rotateShape(&currentShapeData, RotationAction.Left);
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_x)) {
                 rotateShape(&currentShapeData, RotationAction.Right);
+            }
+            if (rl.isKeyPressed(rl.KeyboardKey.key_left_shift) and !holdPressed) {
+                holdPressed = true;
+                const currentPiece = currentShapeData.shape;
+                currentShapeData.playfield.setIntersection(BitSetPlayfield.initEmpty());
+                if (heldPiece) |held| {
+                    spawnPiece(held, &currentShapeData);
+                } else {
+                    spawnPiece(pieceQueue.dequeue(), &currentShapeData);
+                }
+                heldPiece = currentPiece;
             }
         }
         // Draw
@@ -138,6 +153,7 @@ pub fn main() !void {
             const nextPieces = try pieceQueue.peekAll(arena.allocator());
             arena.allocator().destroy(&nextPieces);
             drawNextPieces(nextPieces);
+            drawPieceWithBackground(heldPiece, rl.Rectangle.init(screenWidth / 4, squareSideLength * 4, squareSideLength * 4, squareSideLength * 4));
         }
     }
 }
@@ -351,66 +367,68 @@ fn drawNextPieces(nextPieces: []PieceShape) void {
         const piece = nextPieces[i];
         const idx: f32 = @floatFromInt(i);
         const background = rl.Rectangle.init(screenWidth * 3 / 4, squareSideLength * (2 + 3 * idx), squareSideLength * 5, squareSideLength * 3);
-        drawNextPiece(piece, background);
+        drawPieceWithBackground(piece, background);
     }
 }
 
-fn drawNextPiece(shape: PieceShape, background: rl.Rectangle) void {
+fn drawPieceWithBackground(shape: ?PieceShape, background: rl.Rectangle) void {
     rl.drawRectangleRec(background, rl.Color.black);
-    var pieceRects: [4]rl.Rectangle = [_]rl.Rectangle{rl.Rectangle.init(background.x, background.y, squareSideLength, squareSideLength)} ** 4;
-    switch (shape) {
-        PieceShape.i => {
-            const pieceLength = squareSideLength * 4;
-            const pieceHeight = squareSideLength;
-            const offsetsX = [4]i32{ 0, 1, 2, 3 };
-            const offsetsY = [4]i32{ 0, 0, 0, 0 };
-            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
-        },
-        PieceShape.j => {
-            const pieceLength = squareSideLength * 3;
-            const pieceHeight = squareSideLength * 2;
-            const offsetsX = [4]i32{ 0, 0, 1, 2 };
-            const offsetsY = [4]i32{ 0, 1, 1, 1 };
-            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
-        },
-        PieceShape.l => {
-            const pieceLength = squareSideLength * 3;
-            const pieceHeight = squareSideLength * 2;
-            const offsetsX = [4]i32{ 0, 1, 2, 2 };
-            const offsetsY = [4]i32{ 1, 1, 1, 0 };
-            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
-        },
-        PieceShape.o => {
-            const pieceLength = squareSideLength * 2;
-            const pieceHeight = squareSideLength * 2;
-            const offsetsX = [4]i32{ 0, 1, 0, 1 };
-            const offsetsY = [4]i32{ 0, 0, 1, 1 };
-            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
-        },
-        PieceShape.s => {
-            const pieceLength = squareSideLength * 3;
-            const pieceHeight = squareSideLength * 2;
-            const offsetsX = [4]i32{ 0, 1, 1, 2 };
-            const offsetsY = [4]i32{ 1, 1, 0, 0 };
-            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
-        },
-        PieceShape.z => {
-            const pieceLength = squareSideLength * 3;
-            const pieceHeight = squareSideLength * 2;
-            const offsetsX = [4]i32{ 0, 1, 1, 2 };
-            const offsetsY = [4]i32{ 0, 0, 1, 1 };
-            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
-        },
-        PieceShape.t => {
-            const pieceLength = squareSideLength * 3;
-            const pieceHeight = squareSideLength * 2;
-            const offsetsX = [4]i32{ 0, 1, 1, 2 };
-            const offsetsY = [4]i32{ 1, 1, 0, 1 };
-            offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
-        },
-    }
-    for (pieceRects) |pieceRect| {
-        rl.drawRectangleRec(pieceRect, shape.toColor());
+    if (shape) |shapeVal| {
+        var pieceRects: [4]rl.Rectangle = [_]rl.Rectangle{rl.Rectangle.init(background.x, background.y, squareSideLength, squareSideLength)} ** 4;
+        switch (shapeVal) {
+            PieceShape.i => {
+                const pieceLength = squareSideLength * 4;
+                const pieceHeight = squareSideLength;
+                const offsetsX = [4]i32{ 0, 1, 2, 3 };
+                const offsetsY = [4]i32{ 0, 0, 0, 0 };
+                offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+            },
+            PieceShape.j => {
+                const pieceLength = squareSideLength * 3;
+                const pieceHeight = squareSideLength * 2;
+                const offsetsX = [4]i32{ 0, 0, 1, 2 };
+                const offsetsY = [4]i32{ 0, 1, 1, 1 };
+                offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+            },
+            PieceShape.l => {
+                const pieceLength = squareSideLength * 3;
+                const pieceHeight = squareSideLength * 2;
+                const offsetsX = [4]i32{ 0, 1, 2, 2 };
+                const offsetsY = [4]i32{ 1, 1, 1, 0 };
+                offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+            },
+            PieceShape.o => {
+                const pieceLength = squareSideLength * 2;
+                const pieceHeight = squareSideLength * 2;
+                const offsetsX = [4]i32{ 0, 1, 0, 1 };
+                const offsetsY = [4]i32{ 0, 0, 1, 1 };
+                offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+            },
+            PieceShape.s => {
+                const pieceLength = squareSideLength * 3;
+                const pieceHeight = squareSideLength * 2;
+                const offsetsX = [4]i32{ 0, 1, 1, 2 };
+                const offsetsY = [4]i32{ 1, 1, 0, 0 };
+                offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+            },
+            PieceShape.z => {
+                const pieceLength = squareSideLength * 3;
+                const pieceHeight = squareSideLength * 2;
+                const offsetsX = [4]i32{ 0, 1, 1, 2 };
+                const offsetsY = [4]i32{ 0, 0, 1, 1 };
+                offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+            },
+            PieceShape.t => {
+                const pieceLength = squareSideLength * 3;
+                const pieceHeight = squareSideLength * 2;
+                const offsetsX = [4]i32{ 0, 1, 1, 2 };
+                const offsetsY = [4]i32{ 1, 1, 0, 1 };
+                offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
+            },
+        }
+        for (pieceRects) |pieceRect| {
+            rl.drawRectangleRec(pieceRect, shapeVal.toColor());
+        }
     }
 }
 fn offsetPieceRects(
