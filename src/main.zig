@@ -1,11 +1,52 @@
 const std = @import("std");
+
 const rl = @import("raylib");
-const PieceShape = @import("pieceShape.zig").PieceShape;
+
 const PieceQueue = @import("pieceQueue.zig").PieceQueue;
+const PieceShape = @import("pieceShape.zig").PieceShape;
 const Timer = @import("timer.zig").Timer;
 
 const Direction = enum { North, East, South, West };
-const RotationState = enum { Zero, Right, Left, Two };
+const RotationState = enum {
+    Zero,
+    Right,
+    Two,
+    Left,
+    pub fn rotateRight(self: RotationState) RotationState {
+        switch (self) {
+            RotationState.Zero => {
+                return RotationState.Right;
+            },
+            RotationState.Right => {
+                return RotationState.Two;
+            },
+
+            RotationState.Two => {
+                return RotationState.Left;
+            },
+            RotationState.Left => {
+                return RotationState.Zero;
+            },
+        }
+    }
+    pub fn rotateLeft(self: RotationState) RotationState {
+        switch (self) {
+            RotationState.Zero => {
+                return RotationState.Left;
+            },
+            RotationState.Right => {
+                return RotationState.Zero;
+            },
+
+            RotationState.Two => {
+                return RotationState.Right;
+            },
+            RotationState.Left => {
+                return RotationState.Two;
+            },
+        }
+    }
+};
 const RotationAction = enum { Right, Left };
 
 const pieceCount = 7;
@@ -18,12 +59,16 @@ const squareSideLength = screenHeight / (visiblePlayfieldHeight + 3);
 const BitSetPlayfield = std.bit_set.IntegerBitSet(playfieldWidth * playfieldHeight);
 var piecePlayfield: [pieceCount]BitSetPlayfield = undefined;
 
-const CurrentShapeData = struct { shape: PieceShape, playfield: *BitSetPlayfield, rotation: RotationState };
+const CurrentShapeData = struct { shape: PieceShape, playfield: *BitSetPlayfield, rotation: RotationState, rotationPointX: i32, rotationPointY: i32 };
 
-pub fn main() !void {
+fn initData() void {
     for (0..pieceCount) |i| {
         piecePlayfield[i] = BitSetPlayfield.initEmpty();
     }
+}
+
+pub fn main() !void {
+    initData();
 
     rl.initWindow(screenWidth, screenHeight, "zigtris");
     defer rl.closeWindow();
@@ -37,7 +82,7 @@ pub fn main() !void {
     var pieceQueue = PieceQueue.init();
 
     var currentShapePlayfield = BitSetPlayfield.initEmpty();
-    var currentShapeData = CurrentShapeData{ .shape = undefined, .playfield = &currentShapePlayfield, .rotation = RotationState.Zero };
+    var currentShapeData = CurrentShapeData{ .shape = undefined, .playfield = &currentShapePlayfield, .rotation = RotationState.Zero, .rotationPointX = 0, .rotationPointY = 0 };
 
     var lockTimer: Timer = undefined;
     lockTimer.disable();
@@ -74,9 +119,9 @@ pub fn main() !void {
                 lockCurrentShape(&currentShapeData);
             }
             if (rl.isKeyPressed(rl.KeyboardKey.key_z)) {
-                // rotateShapeRight(currentShape, &currentShapePlayfield, currentRotation);
+                rotateShape(&currentShapeData, RotationAction.Left);
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_x)) {
-                // rotateShapeLeft(currentShape, &currentShapePlayfield, currentRotation);
+                rotateShape(&currentShapeData, RotationAction.Right);
             }
         }
         // Draw
@@ -140,6 +185,24 @@ fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) bool {
             return false;
         } else {
             currentShapeData.playfield.mask = futurePlayfield.mask;
+            var offsetX: i32 = 0;
+            var offsetY: i32 = 0;
+            switch (direction) {
+                Direction.North => {
+                    offsetY = -1;
+                },
+                Direction.East => {
+                    offsetX = 1;
+                },
+                Direction.South => {
+                    offsetY = 1;
+                },
+                Direction.West => {
+                    offsetX = -1;
+                },
+            }
+            currentShapeData.rotationPointX += offsetX;
+            currentShapeData.rotationPointY += offsetY;
             return true;
         }
     } else {
@@ -211,6 +274,8 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             for (futureXpos, futureYpos) |futXPos, futYPos| {
                 setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
+            currenShapeData.rotationPointX = futureXpos[1];
+            currenShapeData.rotationPointY = futureYpos[1];
         },
         PieceShape.l => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 };
@@ -218,6 +283,8 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             for (futureXpos, futureYpos) |futXPos, futYPos| {
                 setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
+            currenShapeData.rotationPointX = futureXpos[1];
+            currenShapeData.rotationPointY = futureYpos[1];
         },
         PieceShape.j => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2 };
@@ -225,6 +292,8 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             for (futureXpos, futureYpos) |futXPos, futYPos| {
                 setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
+            currenShapeData.rotationPointX = futureXpos[2];
+            currenShapeData.rotationPointY = futureYpos[2];
         },
         PieceShape.o => {
             currenShapeData.shape = PieceShape.o;
@@ -233,6 +302,8 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             for (futureXpos, futureYpos) |futXPos, futYPos| {
                 setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
+            currenShapeData.rotationPointX = futureXpos[2];
+            currenShapeData.rotationPointY = futureYpos[2];
         },
         PieceShape.s => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2, playfieldWidth / 2 + 1 };
@@ -240,6 +311,8 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             for (futureXpos, futureYpos) |futXPos, futYPos| {
                 setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
+            currenShapeData.rotationPointX = futureXpos[1];
+            currenShapeData.rotationPointY = futureYpos[1];
         },
         PieceShape.z => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2 - 1, playfieldWidth / 2 };
@@ -247,6 +320,8 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             for (futureXpos, futureYpos) |futXPos, futYPos| {
                 setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
+            currenShapeData.rotationPointX = futureXpos[1];
+            currenShapeData.rotationPointY = futureYpos[1];
         },
         PieceShape.t => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 - 1 };
@@ -254,6 +329,8 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             for (futureXpos, futureYpos) |futXPos, futYPos| {
                 setPlayfieldFromPosition(currenShapeData.playfield, futXPos, futYPos);
             }
+            currenShapeData.rotationPointX = futureXpos[1];
+            currenShapeData.rotationPointY = futureYpos[1];
         },
     }
 }
@@ -353,5 +430,89 @@ fn offsetPieceRects(
     for (0..4) |i| {
         pieceRects[i].y += @floatFromInt(squareSideLength * offsetsY[i]);
         pieceRects[i].x += @floatFromInt(squareSideLength * offsetsX[i]);
+    }
+}
+
+fn rotateShape(currentShapeData: *CurrentShapeData, rotationAction: RotationAction) void {
+    var nextRotationState: RotationState = undefined;
+    switch (rotationAction) {
+        RotationAction.Right => {
+            nextRotationState = currentShapeData.rotation.rotateRight();
+        },
+        RotationAction.Left => {
+            nextRotationState = currentShapeData.rotation.rotateLeft();
+        },
+    }
+    var tempidx: usize = 0;
+    var posCount: usize = 0;
+
+    var filledXPos: [4]i32 = undefined;
+    var filledYPos: [4]i32 = undefined;
+
+    while (posCount < 4) : (tempidx += 1) {
+        if (currentShapeData.playfield.isSet(tempidx)) {
+            filledXPos[posCount] = @intCast(@rem(tempidx, playfieldWidth));
+            filledYPos[posCount] = @intCast(@divFloor(tempidx, playfieldWidth));
+            posCount += 1;
+        }
+    }
+    for (filledXPos, filledYPos) |xPos, yPos| {
+        std.debug.print("({d}, {d}), ", .{ xPos, yPos });
+    }
+    std.debug.print("\n", .{});
+
+    var futureXPos: [4]i32 = undefined;
+    var futureYPos: [4]i32 = undefined;
+    var temp: [4]i32 = undefined;
+    @memcpy(&futureXPos, &filledXPos);
+    @memcpy(&futureYPos, &filledYPos);
+    for (0..4) |i| {
+        futureXPos[i] -= currentShapeData.rotationPointX;
+        futureYPos[i] -= currentShapeData.rotationPointY;
+    }
+    @memcpy(&temp, &futureYPos);
+    @memcpy(&futureYPos, &futureXPos);
+    @memcpy(&futureXPos, &temp);
+    switch (rotationAction) {
+        RotationAction.Right => {
+            for (futureXPos, 0..) |xPos, i| {
+                futureXPos[i] = -xPos;
+            }
+        },
+        RotationAction.Left => {
+            for (futureYPos, 0..) |yPos, i| {
+                futureYPos[i] = -yPos;
+            }
+        },
+    }
+    for (0..4) |i| {
+        futureXPos[i] += currentShapeData.rotationPointX;
+        futureYPos[i] += currentShapeData.rotationPointY;
+    }
+
+    for (futureXPos, futureYPos) |futXPos, futYPos| {
+        if (futXPos < 0 or futXPos >= playfieldWidth or futYPos < 0 or futYPos >= playfieldHeight) {
+            // TODO: table offset implementation
+            return;
+        }
+    }
+
+    var futurePlayfield = BitSetPlayfield.initEmpty();
+    for (futureXPos, futureYPos) |futXPos, futYPos| {
+        const futXCast: usize = @intCast(futXPos);
+        const futYCast: usize = @intCast(futYPos);
+        const bitIdx: usize = futYCast * playfieldWidth + futXCast;
+        futurePlayfield.set(bitIdx);
+    }
+    var allFilledPlayfield = BitSetPlayfield.initEmpty();
+    for (piecePlayfield) |playfield| {
+        allFilledPlayfield.setUnion(playfield);
+    }
+    const checkPlayfield = allFilledPlayfield.intersectWith(futurePlayfield);
+    if (checkPlayfield.mask != 0) {
+        // TODO: table offset implementation
+        return;
+    } else {
+        currentShapeData.playfield.mask = futurePlayfield.mask;
     }
 }
