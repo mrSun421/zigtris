@@ -151,7 +151,7 @@ pub fn main() !void {
             drawPlayfield(currentShapeData.shape, currentShapeData.playfield);
 
             const nextPieces = try pieceQueue.peekAll(arena.allocator());
-            arena.allocator().destroy(&nextPieces);
+            defer arena.allocator().destroy(&nextPieces);
             drawNextPieces(nextPieces);
             drawPieceWithBackground(heldPiece, rl.Rectangle.init(screenWidth / 4, squareSideLength * 4, squareSideLength * 4, squareSideLength * 4));
         }
