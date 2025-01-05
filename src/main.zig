@@ -86,6 +86,9 @@ pub fn main() !void {
 
     var lockTimer: Timer = undefined;
     lockTimer.disable();
+    var gravityTimer: Timer = undefined;
+    gravityTimer.disable();
+
     var heldPiece: ?PieceShape = null;
     var holdPressed: bool = false;
 
@@ -97,6 +100,7 @@ pub fn main() !void {
             }
             if (currentShapePlayfield.mask == 0) {
                 spawnPiece(pieceQueue.dequeue(), &currentShapeData);
+                gravityTimer.start(0.5);
             }
 
             if (lockTimer.isDone()) {
@@ -104,14 +108,21 @@ pub fn main() !void {
                 holdPressed = false;
                 lockTimer.disable();
             }
+            if (gravityTimer.isDone()) {
+                const moveIsValid = moveShape(&currentShapeData, Direction.South);
+                if (!moveIsValid) {
+                    lockTimer.start(0.5);
+                }
+                gravityTimer.start(0.5);
+            }
 
             if (rl.isKeyPressed(rl.KeyboardKey.key_down)) {
                 const moveIsValid = moveShape(&currentShapeData, Direction.South);
                 if (!moveIsValid) {
                     lockTimer.start(0.5);
+                } else {
+                    gravityTimer.start(0.5);
                 }
-            } else if (rl.isKeyPressed(rl.KeyboardKey.key_up)) {
-                _ = moveShape(&currentShapeData, Direction.North);
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_left)) {
                 _ = moveShape(&currentShapeData, Direction.West);
             } else if (rl.isKeyPressed(rl.KeyboardKey.key_right)) {
@@ -133,8 +144,10 @@ pub fn main() !void {
                 currentShapeData.playfield.setIntersection(BitSetPlayfield.initEmpty());
                 if (heldPiece) |held| {
                     spawnPiece(held, &currentShapeData);
+                    gravityTimer.start(0.5);
                 } else {
                     spawnPiece(pieceQueue.dequeue(), &currentShapeData);
+                    gravityTimer.start(0.5);
                 }
                 heldPiece = currentPiece;
             }
@@ -264,10 +277,8 @@ fn getFuturePlayfield(currentShapeData: *CurrentShapeData, direction: Direction)
         futureYpos[i] = yPos + offsetY;
     }
 
-    for (futureXpos, futureYpos) |futXPos, futYPos| {
-        if (futXPos < 0 or futXPos >= playfieldWidth or futYPos < 0 or futYPos >= playfieldHeight) {
-            return null;
-        }
+    if (!coordinatesAreValid(futureXpos, futureYpos)) {
+        return null;
     }
 
     var futurePlayfield = BitSetPlayfield.initEmpty();
@@ -504,11 +515,8 @@ fn rotateShape(currentShapeData: *CurrentShapeData, rotationAction: RotationActi
         futureYPos[i] += currentShapeData.rotationPointY;
     }
 
-    for (futureXPos, futureYPos) |futXPos, futYPos| {
-        if (futXPos < 0 or futXPos >= playfieldWidth or futYPos < 0 or futYPos >= playfieldHeight) {
-            // TODO: table offset implementation
-            return;
-        }
+    if (!coordinatesAreValid(futureXPos, futureYPos)) {
+        return;
     }
 
     var futurePlayfield = BitSetPlayfield.initEmpty();
@@ -529,4 +537,13 @@ fn rotateShape(currentShapeData: *CurrentShapeData, rotationAction: RotationActi
     } else {
         currentShapeData.playfield.mask = futurePlayfield.mask;
     }
+}
+
+fn coordinatesAreValid(xPositions: [4]i32, yPositions: [4]i32) bool {
+    for (xPositions, yPositions) |xPos, yPos| {
+        if (xPos < 0 or xPos >= playfieldWidth or yPos < 0 or yPos >= playfieldHeight) {
+            return false;
+        }
+    }
+    return true;
 }
