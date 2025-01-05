@@ -14,34 +14,34 @@ const RotationState = enum {
     Left,
     pub fn rotateRight(self: RotationState) RotationState {
         switch (self) {
-            RotationState.Zero => {
+            .Zero => {
                 return RotationState.Right;
             },
-            RotationState.Right => {
+            .Right => {
                 return RotationState.Two;
             },
 
-            RotationState.Two => {
+            .Two => {
                 return RotationState.Left;
             },
-            RotationState.Left => {
+            .Left => {
                 return RotationState.Zero;
             },
         }
     }
     pub fn rotateLeft(self: RotationState) RotationState {
         switch (self) {
-            RotationState.Zero => {
+            .Zero => {
                 return RotationState.Left;
             },
-            RotationState.Right => {
+            .Right => {
                 return RotationState.Zero;
             },
 
-            RotationState.Two => {
+            .Two => {
                 return RotationState.Right;
             },
-            RotationState.Left => {
+            .Left => {
                 return RotationState.Two;
             },
         }
@@ -217,16 +217,16 @@ fn moveShape(currentShapeData: *CurrentShapeData, direction: Direction) bool {
             var offsetX: i32 = 0;
             var offsetY: i32 = 0;
             switch (direction) {
-                Direction.North => {
+                .North => {
                     offsetY = -1;
                 },
-                Direction.East => {
+                .East => {
                     offsetX = 1;
                 },
-                Direction.South => {
+                .South => {
                     offsetY = 1;
                 },
-                Direction.West => {
+                .West => {
                     offsetX = -1;
                 },
             }
@@ -243,16 +243,16 @@ fn getFuturePlayfield(currentShapeData: *CurrentShapeData, direction: Direction)
     var offsetX: i32 = 0;
     var offsetY: i32 = 0;
     switch (direction) {
-        Direction.North => {
+        .North => {
             offsetY = -1;
         },
-        Direction.East => {
+        .East => {
             offsetX = 1;
         },
-        Direction.South => {
+        .South => {
             offsetY = 1;
         },
-        Direction.West => {
+        .West => {
             offsetX = -1;
         },
     }
@@ -295,7 +295,7 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
     currenShapeData.rotation = RotationState.Zero;
     currenShapeData.shape = shape;
     switch (shape) {
-        PieceShape.i => {
+        .i => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 + 1 };
             const futureYpos = [4]i32{ 1, 1, 1, 1 };
             for (futureXpos, futureYpos) |futXPos, futYPos| {
@@ -304,7 +304,7 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             currenShapeData.rotationPointX = futureXpos[1];
             currenShapeData.rotationPointY = futureYpos[1];
         },
-        PieceShape.l => {
+        .l => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 };
             const futureYpos = [4]i32{ 2, 2, 2, 1 };
             for (futureXpos, futureYpos) |futXPos, futYPos| {
@@ -313,7 +313,7 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             currenShapeData.rotationPointX = futureXpos[1];
             currenShapeData.rotationPointY = futureYpos[1];
         },
-        PieceShape.j => {
+        .j => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2 };
             const futureYpos = [4]i32{ 1, 2, 2, 2 };
             for (futureXpos, futureYpos) |futXPos, futYPos| {
@@ -322,7 +322,7 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             currenShapeData.rotationPointX = futureXpos[2];
             currenShapeData.rotationPointY = futureYpos[2];
         },
-        PieceShape.o => {
+        .o => {
             currenShapeData.shape = PieceShape.o;
             const futureXpos = [4]i32{ playfieldWidth / 2 - 1, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 };
             const futureYpos = [4]i32{ 1, 2, 1, 2 };
@@ -332,7 +332,7 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             currenShapeData.rotationPointX = futureXpos[2];
             currenShapeData.rotationPointY = futureYpos[2];
         },
-        PieceShape.s => {
+        .s => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2, playfieldWidth / 2 + 1 };
             const futureYpos = [4]i32{ 2, 2, 1, 1 };
             for (futureXpos, futureYpos) |futXPos, futYPos| {
@@ -341,7 +341,7 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             currenShapeData.rotationPointX = futureXpos[1];
             currenShapeData.rotationPointY = futureYpos[1];
         },
-        PieceShape.z => {
+        .z => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2 - 1, playfieldWidth / 2 };
             const futureYpos = [4]i32{ 1, 1, 2, 2 };
             for (futureXpos, futureYpos) |futXPos, futYPos| {
@@ -350,7 +350,7 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             currenShapeData.rotationPointX = futureXpos[1];
             currenShapeData.rotationPointY = futureYpos[1];
         },
-        PieceShape.t => {
+        .t => {
             const futureXpos = [4]i32{ playfieldWidth / 2 - 2, playfieldWidth / 2 - 1, playfieldWidth / 2, playfieldWidth / 2 - 1 };
             const futureYpos = [4]i32{ 2, 2, 2, 1 };
             for (futureXpos, futureYpos) |futXPos, futYPos| {
@@ -387,49 +387,49 @@ fn drawPieceWithBackground(shape: ?PieceShape, background: rl.Rectangle) void {
     if (shape) |shapeVal| {
         var pieceRects: [4]rl.Rectangle = [_]rl.Rectangle{rl.Rectangle.init(background.x, background.y, squareSideLength, squareSideLength)} ** 4;
         switch (shapeVal) {
-            PieceShape.i => {
+            .i => {
                 const pieceLength = squareSideLength * 4;
                 const pieceHeight = squareSideLength;
                 const offsetsX = [4]i32{ 0, 1, 2, 3 };
                 const offsetsY = [4]i32{ 0, 0, 0, 0 };
                 offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
             },
-            PieceShape.j => {
+            .j => {
                 const pieceLength = squareSideLength * 3;
                 const pieceHeight = squareSideLength * 2;
                 const offsetsX = [4]i32{ 0, 0, 1, 2 };
                 const offsetsY = [4]i32{ 0, 1, 1, 1 };
                 offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
             },
-            PieceShape.l => {
+            .l => {
                 const pieceLength = squareSideLength * 3;
                 const pieceHeight = squareSideLength * 2;
                 const offsetsX = [4]i32{ 0, 1, 2, 2 };
                 const offsetsY = [4]i32{ 1, 1, 1, 0 };
                 offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
             },
-            PieceShape.o => {
+            .o => {
                 const pieceLength = squareSideLength * 2;
                 const pieceHeight = squareSideLength * 2;
                 const offsetsX = [4]i32{ 0, 1, 0, 1 };
                 const offsetsY = [4]i32{ 0, 0, 1, 1 };
                 offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
             },
-            PieceShape.s => {
+            .s => {
                 const pieceLength = squareSideLength * 3;
                 const pieceHeight = squareSideLength * 2;
                 const offsetsX = [4]i32{ 0, 1, 1, 2 };
                 const offsetsY = [4]i32{ 1, 1, 0, 0 };
                 offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
             },
-            PieceShape.z => {
+            .z => {
                 const pieceLength = squareSideLength * 3;
                 const pieceHeight = squareSideLength * 2;
                 const offsetsX = [4]i32{ 0, 1, 1, 2 };
                 const offsetsY = [4]i32{ 0, 0, 1, 1 };
                 offsetPieceRects(&pieceRects, background, pieceLength, pieceHeight, offsetsX, offsetsY);
             },
-            PieceShape.t => {
+            .t => {
                 const pieceLength = squareSideLength * 3;
                 const pieceHeight = squareSideLength * 2;
                 const offsetsX = [4]i32{ 0, 1, 1, 2 };
@@ -465,10 +465,10 @@ fn offsetPieceRects(
 fn rotateShape(currentShapeData: *CurrentShapeData, rotationAction: RotationAction) void {
     var nextRotationState: RotationState = undefined;
     switch (rotationAction) {
-        RotationAction.Right => {
+        .Right => {
             nextRotationState = currentShapeData.rotation.rotateRight();
         },
-        RotationAction.Left => {
+        .Left => {
             nextRotationState = currentShapeData.rotation.rotateLeft();
         },
     }
@@ -499,12 +499,12 @@ fn rotateShape(currentShapeData: *CurrentShapeData, rotationAction: RotationActi
     @memcpy(&futureYPos, &futureXPos);
     @memcpy(&futureXPos, &temp);
     switch (rotationAction) {
-        RotationAction.Right => {
+        .Right => {
             for (futureXPos, 0..) |xPos, i| {
                 futureXPos[i] = -xPos;
             }
         },
-        RotationAction.Left => {
+        .Left => {
             for (futureYPos, 0..) |yPos, i| {
                 futureYPos[i] = -yPos;
             }
