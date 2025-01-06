@@ -21,4 +21,7 @@ pub const Timer = struct {
     pub fn disable(self: *Timer) void {
         self.lifeTime = std.math.floatMax(f64);
     }
+    pub fn isEnabled(self: *Timer) bool {
+        return self.lifeTime < std.math.floatMax(f64);
+    }
 };

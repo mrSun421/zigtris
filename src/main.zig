@@ -57,6 +57,12 @@ const visiblePlayfieldHeight = 22;
 const playfieldWidth = 10;
 const squareSideLength = screenHeight / (visiblePlayfieldHeight + 3);
 const BitSetPlayfield = std.bit_set.IntegerBitSet(playfieldWidth * playfieldHeight);
+fn printBitSetPlayfield(playfield: BitSetPlayfield) void {
+    inline for (0..BitSetPlayfield.bit_length / playfieldWidth) |i| {
+        const val = (playfield.mask >> (playfieldWidth * i) & (0b1111111111));
+        std.debug.print("{b:0<10}\n", .{val});
+    }
+}
 var piecePlayfield: [pieceCount]BitSetPlayfield = undefined;
 
 const CurrentShapeData = struct { shape: PieceShape, playfield: *BitSetPlayfield, rotation: RotationState, rotationPointX: i32, rotationPointY: i32 };
@@ -88,6 +94,8 @@ pub fn main() !void {
     lockTimer.disable();
     var gravityTimer: Timer = undefined;
     gravityTimer.disable();
+    var spawnTimer: Timer = undefined;
+    spawnTimer.start(0.01);
 
     var heldPiece: ?PieceShape = null;
     var holdPressed: bool = false;
@@ -98,28 +106,36 @@ pub fn main() !void {
             if (pieceQueue.len < pieceCount) {
                 pieceQueue.addPiece();
             }
-            if (currentShapePlayfield.mask == 0) {
-                spawnPiece(pieceQueue.dequeue(), &currentShapeData);
-                gravityTimer.start(0.5);
-            }
 
             if (lockTimer.isDone()) {
                 lockCurrentShape(&currentShapeData);
                 holdPressed = false;
+                gravityTimer.disable();
                 lockTimer.disable();
+                spawnTimer.start(0.1);
             }
             if (gravityTimer.isDone()) {
                 const moveIsValid = moveShape(&currentShapeData, Direction.South);
                 if (!moveIsValid) {
-                    lockTimer.start(0.5);
+                    if (!lockTimer.isEnabled()) {
+                        lockTimer.start(0.5);
+                    }
+                } else {
+                    gravityTimer.start(0.5);
                 }
+            }
+            if (spawnTimer.isDone()) {
+                spawnTimer.disable();
+                spawnPiece(pieceQueue.dequeue(), &currentShapeData);
                 gravityTimer.start(0.5);
             }
 
             if (rl.isKeyPressed(rl.KeyboardKey.key_down)) {
                 const moveIsValid = moveShape(&currentShapeData, Direction.South);
                 if (!moveIsValid) {
-                    lockTimer.start(0.5);
+                    if (!lockTimer.isEnabled()) {
+                        lockTimer.start(0.5);
+                    }
                 } else {
                     gravityTimer.start(0.5);
                 }
@@ -130,8 +146,8 @@ pub fn main() !void {
             }
             if (rl.isKeyPressed(rl.KeyboardKey.key_space)) {
                 while (moveShape(&currentShapeData, Direction.South)) {}
-                lockCurrentShape(&currentShapeData);
                 holdPressed = false;
+                lockTimer.start(0.01);
             }
             if (rl.isKeyPressed(rl.KeyboardKey.key_z)) {
                 rotateShape(&currentShapeData, RotationAction.Left);
@@ -150,6 +166,33 @@ pub fn main() !void {
                     gravityTimer.start(0.5);
                 }
                 heldPiece = currentPiece;
+            }
+
+            var rowIdx: usize = 0;
+            while (rowIdx < playfieldHeight) {
+                var allFilledPlayfield = BitSetPlayfield.initEmpty();
+                for (piecePlayfield) |playfield| {
+                    allFilledPlayfield.setUnion(playfield);
+                }
+                const i = rowIdx;
+                var lineChecker: BitSetPlayfield = BitSetPlayfield.initEmpty();
+                lineChecker.setRangeValue(.{ .start = i * playfieldWidth, .end = i * playfieldWidth + playfieldWidth }, true);
+                const currentLine = lineChecker.intersectWith(allFilledPlayfield.complement());
+                if (currentLine.mask != 0) {
+                    rowIdx += 1;
+                } else {
+                    for (0..piecePlayfield.len) |j| {
+                        piecePlayfield[j].setIntersection(lineChecker.complement());
+                        var tempPlayfield = BitSetPlayfield.initEmpty();
+                        tempPlayfield.setUnion(piecePlayfield[j]);
+                        var topMask = BitSetPlayfield.initEmpty();
+                        topMask.setRangeValue(.{ .start = 0, .end = i * playfieldWidth }, true);
+                        piecePlayfield[j].setIntersection(topMask.complement());
+                        tempPlayfield.setIntersection(topMask);
+                        tempPlayfield.mask <<= playfieldWidth;
+                        piecePlayfield[j].setUnion(tempPlayfield);
+                    }
+                }
             }
         }
         // Draw
@@ -263,6 +306,9 @@ fn getFuturePlayfield(currentShapeData: *CurrentShapeData, direction: Direction)
     var filledYPos: [4]i32 = undefined;
 
     while (posCount < 4) : (tempidx += 1) {
+        if (tempidx >= BitSetPlayfield.bit_length) {
+            return null;
+        }
         if (currentShapeData.playfield.isSet(tempidx)) {
             filledXPos[posCount] = @intCast(@rem(tempidx, playfieldWidth));
             filledYPos[posCount] = @intCast(@divFloor(tempidx, playfieldWidth));
