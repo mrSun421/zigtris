@@ -5,48 +5,9 @@ const rl = @import("raylib");
 const PieceQueue = @import("pieceQueue.zig").PieceQueue;
 const PieceShape = @import("pieceShape.zig").PieceShape;
 const Timer = @import("timer.zig").Timer;
+const RotationState = @import("rotationState.zig").RotationState;
 
 const Direction = enum { North, East, South, West };
-const RotationState = enum {
-    Zero,
-    Right,
-    Two,
-    Left,
-    pub fn rotateRight(self: RotationState) RotationState {
-        switch (self) {
-            .Zero => {
-                return RotationState.Right;
-            },
-            .Right => {
-                return RotationState.Two;
-            },
-
-            .Two => {
-                return RotationState.Left;
-            },
-            .Left => {
-                return RotationState.Zero;
-            },
-        }
-    }
-    pub fn rotateLeft(self: RotationState) RotationState {
-        switch (self) {
-            .Zero => {
-                return RotationState.Left;
-            },
-            .Right => {
-                return RotationState.Zero;
-            },
-
-            .Two => {
-                return RotationState.Right;
-            },
-            .Left => {
-                return RotationState.Two;
-            },
-        }
-    }
-};
 const RotationAction = enum { Right, Left };
 
 const pieceCount = 7;
@@ -509,79 +470,89 @@ fn offsetPieceRects(
 }
 
 fn rotateShape(currentShapeData: *CurrentShapeData, rotationAction: RotationAction) void {
-    var nextRotationState: RotationState = undefined;
-    switch (rotationAction) {
-        .Right => {
-            nextRotationState = currentShapeData.rotation.rotateRight();
-        },
-        .Left => {
-            nextRotationState = currentShapeData.rotation.rotateLeft();
-        },
-    }
-    var tempidx: usize = 0;
-    var posCount: usize = 0;
-
-    var filledXPos: [4]i32 = undefined;
-    var filledYPos: [4]i32 = undefined;
-
-    while (posCount < 4) : (tempidx += 1) {
-        if (currentShapeData.playfield.isSet(tempidx)) {
-            filledXPos[posCount] = @intCast(@rem(tempidx, playfieldWidth));
-            filledYPos[posCount] = @intCast(@divFloor(tempidx, playfieldWidth));
-            posCount += 1;
+    for (0..5) |wallKickIdx| {
+        var nextRotationState: RotationState = undefined;
+        switch (rotationAction) {
+            .Right => {
+                nextRotationState = currentShapeData.rotation.rotateRight();
+            },
+            .Left => {
+                nextRotationState = currentShapeData.rotation.rotateLeft();
+            },
         }
-    }
+        var tempidx: usize = 0;
+        var posCount: usize = 0;
 
-    var futureXPos: [4]i32 = undefined;
-    var futureYPos: [4]i32 = undefined;
-    var temp: [4]i32 = undefined;
-    @memcpy(&futureXPos, &filledXPos);
-    @memcpy(&futureYPos, &filledYPos);
-    for (0..4) |i| {
-        futureXPos[i] -= currentShapeData.rotationPointX;
-        futureYPos[i] -= currentShapeData.rotationPointY;
-    }
-    @memcpy(&temp, &futureYPos);
-    @memcpy(&futureYPos, &futureXPos);
-    @memcpy(&futureXPos, &temp);
-    switch (rotationAction) {
-        .Right => {
-            for (futureXPos, 0..) |xPos, i| {
-                futureXPos[i] = -xPos;
+        var filledXPos: [4]i32 = undefined;
+        var filledYPos: [4]i32 = undefined;
+
+        while (posCount < 4) : (tempidx += 1) {
+            if (tempidx >= (playfieldWidth * playfieldHeight)) {
+                return;
             }
-        },
-        .Left => {
-            for (futureYPos, 0..) |yPos, i| {
-                futureYPos[i] = -yPos;
+            if (currentShapeData.playfield.isSet(tempidx)) {
+                filledXPos[posCount] = @intCast(@rem(tempidx, playfieldWidth));
+                filledYPos[posCount] = @intCast(@divFloor(tempidx, playfieldWidth));
+                posCount += 1;
             }
-        },
-    }
-    for (0..4) |i| {
-        futureXPos[i] += currentShapeData.rotationPointX;
-        futureYPos[i] += currentShapeData.rotationPointY;
-    }
+        }
 
-    if (!coordinatesAreValid(futureXPos, futureYPos)) {
-        return;
-    }
+        var futureXPos: [4]i32 = undefined;
+        var futureYPos: [4]i32 = undefined;
+        var temp: [4]i32 = undefined;
+        @memcpy(&futureXPos, &filledXPos);
+        @memcpy(&futureYPos, &filledYPos);
+        for (0..4) |i| {
+            futureXPos[i] -= currentShapeData.rotationPointX;
+            futureYPos[i] -= currentShapeData.rotationPointY;
+        }
+        @memcpy(&temp, &futureYPos);
+        @memcpy(&futureYPos, &futureXPos);
+        @memcpy(&futureXPos, &temp);
+        switch (rotationAction) {
+            .Right => {
+                for (futureXPos, 0..) |xPos, i| {
+                    futureXPos[i] = -xPos;
+                }
+            },
+            .Left => {
+                for (futureYPos, 0..) |yPos, i| {
+                    futureYPos[i] = -yPos;
+                }
+            },
+        }
+        const wallkickOffset = getWallkickOffset(currentShapeData.shape, currentShapeData.rotation, nextRotationState, wallKickIdx) orelse rl.Vector2.zero();
+        const wallkickOffsetX: i32 = @intFromFloat(wallkickOffset.x);
+        const wallkickOffsetY: i32 = @intFromFloat(wallkickOffset.y);
+        for (0..4) |i| {
+            futureXPos[i] += currentShapeData.rotationPointX + wallkickOffsetX;
+            futureYPos[i] += currentShapeData.rotationPointY + wallkickOffsetY;
+        }
 
-    var futurePlayfield = BitSetPlayfield.initEmpty();
-    for (futureXPos, futureYPos) |futXPos, futYPos| {
-        const futXCast: usize = @intCast(futXPos);
-        const futYCast: usize = @intCast(futYPos);
-        const bitIdx: usize = futYCast * playfieldWidth + futXCast;
-        futurePlayfield.set(bitIdx);
-    }
-    var allFilledPlayfield = BitSetPlayfield.initEmpty();
-    for (piecePlayfield) |playfield| {
-        allFilledPlayfield.setUnion(playfield);
-    }
-    const checkPlayfield = allFilledPlayfield.intersectWith(futurePlayfield);
-    if (checkPlayfield.mask != 0) {
-        // TODO: table offset implementation
-        return;
-    } else {
-        currentShapeData.playfield.mask = futurePlayfield.mask;
+        if (!coordinatesAreValid(futureXPos, futureYPos)) {
+            continue;
+        }
+
+        var futurePlayfield = BitSetPlayfield.initEmpty();
+        for (futureXPos, futureYPos) |futXPos, futYPos| {
+            const futXCast: usize = @intCast(futXPos);
+            const futYCast: usize = @intCast(futYPos);
+            const bitIdx: usize = futYCast * playfieldWidth + futXCast;
+            futurePlayfield.set(bitIdx);
+        }
+        var allFilledPlayfield = BitSetPlayfield.initEmpty();
+        for (piecePlayfield) |playfield| {
+            allFilledPlayfield.setUnion(playfield);
+        }
+        const checkPlayfield = allFilledPlayfield.intersectWith(futurePlayfield);
+        if (checkPlayfield.mask != 0) {
+            continue;
+        } else {
+            currentShapeData.playfield.mask = futurePlayfield.mask;
+            currentShapeData.rotationPointX += wallkickOffsetX;
+            currentShapeData.rotationPointY += wallkickOffsetY;
+            break;
+        }
     }
 }
 
@@ -592,4 +563,134 @@ fn coordinatesAreValid(xPositions: [4]i32, yPositions: [4]i32) bool {
         }
     }
     return true;
+}
+
+fn getWallkickOffset(shape: PieceShape, currentRotationState: RotationState, nextRotationState: RotationState, idx: usize) ?rl.Vector2 {
+    if (idx > 5) {
+        return null;
+    }
+    switch (shape) {
+        .i => {
+            return getWallkickOffsetI(currentRotationState, nextRotationState, idx);
+        },
+        .l => {
+            return getWallkickOffsetJLSTZ(currentRotationState, nextRotationState, idx);
+        },
+        .j => {
+            return getWallkickOffsetJLSTZ(currentRotationState, nextRotationState, idx);
+        },
+        .o => {
+            return rl.Vector2.zero();
+        },
+        .s => {
+            return getWallkickOffsetJLSTZ(currentRotationState, nextRotationState, idx);
+        },
+        .z => {
+            return getWallkickOffsetJLSTZ(currentRotationState, nextRotationState, idx);
+        },
+        .t => {
+            return getWallkickOffsetJLSTZ(currentRotationState, nextRotationState, idx);
+        },
+    }
+}
+
+fn getWallkickOffsetI(currentRotationState: RotationState, nextRotationState: RotationState, idx: usize) rl.Vector2 {
+    const currOffset: rl.Vector2 = getWallkickDataI(currentRotationState, idx);
+    const nextOffset: rl.Vector2 = getWallkickDataI(nextRotationState, idx);
+    return currOffset.subtract(nextOffset);
+}
+
+fn getWallkickDataI(rotation: RotationState, idx: usize) rl.Vector2 {
+    switch (rotation) {
+        .Zero => {
+            const offsets = [5]rl.Vector2{
+                rl.Vector2.zero(),
+                rl.Vector2.init(-1, 0),
+                rl.Vector2.init(2, 0),
+                rl.Vector2.init(-1, 0),
+                rl.Vector2.init(2, 0),
+            };
+            return offsets[idx];
+        },
+        .Right => {
+            const offsets = [5]rl.Vector2{
+                rl.Vector2.init(-1, 0),
+                rl.Vector2.init(0, 0),
+                rl.Vector2.init(0, 0),
+                rl.Vector2.init(0, -1),
+                rl.Vector2.init(0, -2),
+            };
+            return offsets[idx];
+        },
+        .Two => {
+            const offsets = [5]rl.Vector2{
+                rl.Vector2.init(-1, -1),
+                rl.Vector2.init(1, -1),
+                rl.Vector2.init(-2, -1),
+                rl.Vector2.init(1, 0),
+                rl.Vector2.init(-2, 0),
+            };
+            return offsets[idx];
+        },
+        .Left => {
+            const offsets = [5]rl.Vector2{
+                rl.Vector2.init(0, -1),
+                rl.Vector2.init(0, -1),
+                rl.Vector2.init(0, -1),
+                rl.Vector2.init(0, 1),
+                rl.Vector2.init(0, 2),
+            };
+            return offsets[idx];
+        },
+    }
+}
+
+fn getWallkickOffsetJLSTZ(currentRotationState: RotationState, nextRotationState: RotationState, idx: usize) rl.Vector2 {
+    const currOffset: rl.Vector2 = getWallkickDataJLSTZ(currentRotationState, idx);
+    const nextOffset: rl.Vector2 = getWallkickDataJLSTZ(nextRotationState, idx);
+    return currOffset.subtract(nextOffset);
+}
+fn getWallkickDataJLSTZ(rotation: RotationState, idx: usize) rl.Vector2 {
+    switch (rotation) {
+        .Zero => {
+            const offsets = [5]rl.Vector2{
+                rl.Vector2.zero(),
+                rl.Vector2.zero(),
+                rl.Vector2.zero(),
+                rl.Vector2.zero(),
+                rl.Vector2.zero(),
+            };
+            return offsets[idx];
+        },
+        .Right => {
+            const offsets = [5]rl.Vector2{
+                rl.Vector2.zero(),
+                rl.Vector2.init(1, 0),
+                rl.Vector2.init(1, 1),
+                rl.Vector2.init(0, -2),
+                rl.Vector2.init(1, -2),
+            };
+            return offsets[idx];
+        },
+        .Two => {
+            const offsets = [5]rl.Vector2{
+                rl.Vector2.zero(),
+                rl.Vector2.zero(),
+                rl.Vector2.zero(),
+                rl.Vector2.zero(),
+                rl.Vector2.zero(),
+            };
+            return offsets[idx];
+        },
+        .Left => {
+            const offsets = [5]rl.Vector2{
+                rl.Vector2.zero(),
+                rl.Vector2.init(-1, 0),
+                rl.Vector2.init(-1, 1),
+                rl.Vector2.init(0, -2),
+                rl.Vector2.init(-1, -2),
+            };
+            return offsets[idx];
+        },
+    }
 }

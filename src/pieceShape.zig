@@ -1,4 +1,5 @@
 const rl = @import("raylib");
+const RotationState = @import("rotationState.zig").RotationState;
 pub const PieceShape = enum {
     i,
     l,
