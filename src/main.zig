@@ -56,23 +56,42 @@ pub fn main() !void {
     var gravityTimer: Timer = undefined;
     gravityTimer.disable();
     var spawnTimer: Timer = undefined;
-    spawnTimer.start(0.01);
+    spawnTimer.start(0);
 
     var heldPiece: ?PieceShape = null;
     var holdPressed: bool = false;
 
+    var gameOver: bool = false;
+
     while (!rl.windowShouldClose()) {
         // Update
         {
+            if (gameOver) {
+                gameOver = false;
+                lockTimer.disable();
+                gravityTimer.disable();
+                spawnTimer.disable();
+                while (pieceQueue.len > 0) {
+                    _ = pieceQueue.dequeue();
+                }
+                heldPiece = null;
+                holdPressed = false;
+                initData();
+                currentShapePlayfield = BitSetPlayfield.initEmpty();
+                currentShapeData = CurrentShapeData{ .shape = undefined, .playfield = &currentShapePlayfield, .rotation = RotationState.Zero, .rotationPointX = 0, .rotationPointY = 0 };
+                pieceQueue = PieceQueue.init();
+                spawnTimer.start(0.1);
+                continue;
+            }
             if (pieceQueue.len < pieceCount) {
                 pieceQueue.addPiece();
             }
 
             if (lockTimer.isDone()) {
+                lockTimer.disable();
                 lockCurrentShape(&currentShapeData);
                 holdPressed = false;
                 gravityTimer.disable();
-                lockTimer.disable();
                 spawnTimer.start(0.1);
             }
             if (gravityTimer.isDone()) {
@@ -87,7 +106,10 @@ pub fn main() !void {
             }
             if (spawnTimer.isDone()) {
                 spawnTimer.disable();
-                spawnPiece(pieceQueue.dequeue(), &currentShapeData);
+                gameOver = !spawnPiece(pieceQueue.dequeue(), &currentShapeData);
+                if (gameOver) {
+                    continue;
+                }
                 gravityTimer.start(0.5);
             }
 
@@ -108,7 +130,7 @@ pub fn main() !void {
             if (rl.isKeyPressed(rl.KeyboardKey.key_space)) {
                 while (moveShape(&currentShapeData, Direction.South)) {}
                 holdPressed = false;
-                lockTimer.start(0.01);
+                lockTimer.start(0);
             }
             if (rl.isKeyPressed(rl.KeyboardKey.key_z)) {
                 rotateShape(&currentShapeData, RotationAction.Left);
@@ -120,41 +142,22 @@ pub fn main() !void {
                 const currentPiece = currentShapeData.shape;
                 currentShapeData.playfield.setIntersection(BitSetPlayfield.initEmpty());
                 if (heldPiece) |held| {
-                    spawnPiece(held, &currentShapeData);
+                    gameOver = !spawnPiece(held, &currentShapeData);
+                    if (gameOver) {
+                        continue;
+                    }
                     gravityTimer.start(0.5);
                 } else {
-                    spawnPiece(pieceQueue.dequeue(), &currentShapeData);
+                    gameOver = !spawnPiece(pieceQueue.dequeue(), &currentShapeData);
+                    if (gameOver) {
+                        continue;
+                    }
                     gravityTimer.start(0.5);
                 }
                 heldPiece = currentPiece;
             }
 
-            var rowIdx: usize = 0;
-            while (rowIdx < playfieldHeight) {
-                var allFilledPlayfield = BitSetPlayfield.initEmpty();
-                for (piecePlayfield) |playfield| {
-                    allFilledPlayfield.setUnion(playfield);
-                }
-                const i = rowIdx;
-                var lineChecker: BitSetPlayfield = BitSetPlayfield.initEmpty();
-                lineChecker.setRangeValue(.{ .start = i * playfieldWidth, .end = i * playfieldWidth + playfieldWidth }, true);
-                const currentLine = lineChecker.intersectWith(allFilledPlayfield.complement());
-                if (currentLine.mask != 0) {
-                    rowIdx += 1;
-                } else {
-                    for (0..piecePlayfield.len) |j| {
-                        piecePlayfield[j].setIntersection(lineChecker.complement());
-                        var tempPlayfield = BitSetPlayfield.initEmpty();
-                        tempPlayfield.setUnion(piecePlayfield[j]);
-                        var topMask = BitSetPlayfield.initEmpty();
-                        topMask.setRangeValue(.{ .start = 0, .end = i * playfieldWidth }, true);
-                        piecePlayfield[j].setIntersection(topMask.complement());
-                        tempPlayfield.setIntersection(topMask);
-                        tempPlayfield.mask <<= playfieldWidth;
-                        piecePlayfield[j].setUnion(tempPlayfield);
-                    }
-                }
-            }
+            handleLineClearing();
         }
         // Draw
         {
@@ -298,7 +301,7 @@ fn getFuturePlayfield(currentShapeData: *CurrentShapeData, direction: Direction)
     return futurePlayfield;
 }
 
-fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
+fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) bool {
     currenShapeData.rotation = RotationState.Zero;
     currenShapeData.shape = shape;
     switch (shape) {
@@ -367,6 +370,12 @@ fn spawnPiece(shape: PieceShape, currenShapeData: *CurrentShapeData) void {
             currenShapeData.rotationPointY = futureYpos[1];
         },
     }
+    var allFilledPlayfield = BitSetPlayfield.initEmpty();
+    for (piecePlayfield) |playfield| {
+        allFilledPlayfield.setUnion(playfield);
+    }
+    const checkPlayfield = currenShapeData.playfield.intersectWith(allFilledPlayfield);
+    return checkPlayfield.mask == 0;
 }
 
 fn setPlayfieldFromPosition(playfield: *BitSetPlayfield, xpos: i32, ypos: i32) void {
@@ -692,5 +701,34 @@ fn getWallkickDataJLSTZ(rotation: RotationState, idx: usize) rl.Vector2 {
             };
             return offsets[idx];
         },
+    }
+}
+
+fn handleLineClearing() void {
+    var rowIdx: usize = 0;
+    while (rowIdx < playfieldHeight) {
+        var allFilledPlayfield = BitSetPlayfield.initEmpty();
+        for (piecePlayfield) |playfield| {
+            allFilledPlayfield.setUnion(playfield);
+        }
+        const i = rowIdx;
+        var lineChecker: BitSetPlayfield = BitSetPlayfield.initEmpty();
+        lineChecker.setRangeValue(.{ .start = i * playfieldWidth, .end = i * playfieldWidth + playfieldWidth }, true);
+        const currentLine = lineChecker.intersectWith(allFilledPlayfield.complement());
+        if (currentLine.mask != 0) {
+            rowIdx += 1;
+        } else {
+            for (0..piecePlayfield.len) |j| {
+                piecePlayfield[j].setIntersection(lineChecker.complement());
+                var tempPlayfield = BitSetPlayfield.initEmpty();
+                tempPlayfield.setUnion(piecePlayfield[j]);
+                var topMask = BitSetPlayfield.initEmpty();
+                topMask.setRangeValue(.{ .start = 0, .end = i * playfieldWidth }, true);
+                piecePlayfield[j].setIntersection(topMask.complement());
+                tempPlayfield.setIntersection(topMask);
+                tempPlayfield.mask <<= playfieldWidth;
+                piecePlayfield[j].setUnion(tempPlayfield);
+            }
+        }
     }
 }
